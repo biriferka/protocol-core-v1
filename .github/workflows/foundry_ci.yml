@@ -1,0 +1,61 @@
+name: Foundry CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+
+  # Add a timestamp to the build
+  Timestamp:
+    uses: storyprotocol/gha-workflows/.github/workflows/reusable-timestamp.yml@main
+
+  foundry-test:
+    strategy:
+      fail-fast: true
+    name: Foundry Unit Test
+    runs-on: ubuntu-latest
+    needs: [Timestamp]
+    steps:
+      # Checkout the code with all submodules
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      # Install dependencies using Yarn
+      - name: Run Yarn Install
+        uses: borales/actions-yarn@v4
+        with:
+          cmd: install
+
+      # Install Foundry
+      - name: Install Foundry Toolchain
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      # Build contracts and check contract sizes (excluding tests and scripts)
+      - name: Run Contract Size Check
+        run: |
+          forge --version
+          forge build --force --sizes --skip test --skip script
+
+      # Clean build and check for upgrades
+      - name: Upgrade Safety Test
+        run: |
+          forge clean && forge build --build-info
+        continue-on-error: false # Ensures this step fails the job if an error occurs
+
+      # Run Foundry tests (exclude invariant tests)
+      - name: Run Forge Tests
+        run: |
+          forge test -vvv --no-match-test "invariant*"
+        id: forge-test
+
+      # Run Solhint to lint Solidity contracts
+      - name: Run Solhint
+        run: npx solhint contracts/**/*.sol
+
+      # Optionally, you could add an additional step to report test results if needed
